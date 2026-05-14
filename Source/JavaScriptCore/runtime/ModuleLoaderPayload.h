@@ -30,6 +30,8 @@
 
 namespace JSC {
 
+class CyclicModuleRecord;
+
 // Wraps the dynamic-import target promise for top-level dynamic loadModule. Acts as the
 // host-defined "payload" passed back via FinishLoadingImportedModule, and additionally
 // holds the AND-join state used to combine loadPromise and statePromise.
@@ -62,6 +64,16 @@ public:
         return !--m_remainingFulfillments;
     }
 
+#if USE(BUN_JSC_ADDITIONS)
+    // The initiator CyclicModuleRecord whose body is awaiting this import's
+    // result. Used by dynamicImportLoadSettled to push/pop around the
+    // target's Evaluate() so innerModuleEvaluation 11.c.v can tell the
+    // Nitro self-deadlock from an unrelated parallel dynamic import. See
+    // #30651.
+    CyclicModuleRecord* dynamicImportInitiator() const;
+    void setDynamicImportInitiator(VM&, CyclicModuleRecord*);
+#endif
+
 private:
     ModuleLoaderPayload(VM&, Structure*, JSPromise*);
 
@@ -69,6 +81,9 @@ private:
 
     WriteBarrier<JSPromise> m_promise;
     WriteBarrier<Unknown> m_fulfillment;
+#if USE(BUN_JSC_ADDITIONS)
+    WriteBarrier<CyclicModuleRecord> m_dynamicImportInitiator;
+#endif
     uint8_t m_remainingFulfillments { 2 };
 };
 

@@ -90,6 +90,18 @@ JSModuleLoader::ModuleReferrer ModuleLoadingContext::referrer() const
     return uncheckedDowncast<JSGlobalObject>(ref);
 }
 
+#if USE(BUN_JSC_ADDITIONS)
+void ModuleLoadingContext::setDynamicImportInitiator(VM& vm, CyclicModuleRecord* module)
+{
+    m_dynamicImportInitiator.set(vm, this, module);
+}
+
+CyclicModuleRecord* ModuleLoadingContext::dynamicImportInitiator() const
+{
+    return m_dynamicImportInitiator.get();
+}
+#endif
+
 template<typename Visitor>
 void ModuleLoadingContext::visitChildrenImpl(JSCell* cell, Visitor& visitor)
 {
@@ -100,6 +112,9 @@ void ModuleLoadingContext::visitChildrenImpl(JSCell* cell, Visitor& visitor)
     visitor.append(thisObject->m_entry);
     visitor.append(thisObject->m_referrer);
     visitor.append(thisObject->m_module);
+#if USE(BUN_JSC_ADDITIONS)
+    visitor.append(thisObject->m_dynamicImportInitiator);
+#endif
 }
 
 DEFINE_VISIT_CHILDREN(ModuleLoadingContext);

@@ -1014,7 +1014,16 @@ static void moduleLoadTopSettled(JSGlobalObject* globalObject, VM& vm, ThrowScop
         JSPromise* loadPromise;
 
         if (context->dynamic()) {
-            combinedCell = ModuleLoaderPayload::create(vm, statePromise);
+            auto* payload = ModuleLoaderPayload::create(vm, statePromise);
+#if USE(BUN_JSC_ADDITIONS)
+            // Carry the initiator (the module that did `import(X)`) from
+            // the creating ModuleLoadingContext to the ModuleLoaderPayload
+            // that outlives it. dynamicImportLoadSettled reads it back to
+            // push/pop around the target's Evaluate(). See #30651.
+            if (auto* initiator = context->dynamicImportInitiator())
+                payload->setDynamicImportInitiator(vm, initiator);
+#endif
+            combinedCell = payload;
             loadPromise = globalObject->moduleLoader()->loadModule(globalObject, globalObject, request, combinedCell, scriptFetcher, false, context->useImportMap());
         } else {
             combinedCell = ModuleGraphLoadingState::create(vm, statePromise, scriptFetcher);
@@ -1268,10 +1277,16 @@ static void dynamicImportLoadSettled(JSGlobalObject* globalObject, VM& vm, Throw
     // Step-4 rejectedClosure or Step-6 linkAndEvaluateClosure
     //
     // continueDynamicImport: loadPromise settled
-    // arguments[0] = capabilityPromise
+    // arguments[0] = capabilityPromise (Bun: ModuleLoaderPayload carrying
+    //                capabilityPromise + dynamic-import initiator)
     // arguments[1] = resolution or error
     // arguments[2] = AbstractModuleRecord*
+#if USE(BUN_JSC_ADDITIONS)
+    auto* dynamicPayload = uncheckedDowncast<ModuleLoaderPayload>(arguments[0]);
+    auto* capabilityPromise = dynamicPayload->promise();
+#else
     auto* capabilityPromise = uncheckedDowncast<JSPromise>(arguments[0]);
+#endif
     auto* module = uncheckedDowncast<AbstractModuleRecord>(arguments[2]);
     auto status = static_cast<JSPromise::Status>(payload);
     if (status == JSPromise::Status::Fulfilled) {
@@ -1287,8 +1302,25 @@ static void dynamicImportLoadSettled(JSGlobalObject* globalObject, VM& vm, Throw
             return;
         }
 
+#if USE(BUN_JSC_ADDITIONS)
+        // Push the initiator (the module whose body is awaiting this
+        // dynamic import) onto the VM set for the duration of the target's
+        // Evaluate(). innerModuleEvaluation's 11.c.v reads this to tell
+        // the Nitro self-deadlock (dep == initiator) from unrelated
+        // parallel dynamic imports (no match) — see #30651.
+        CyclicModuleRecord* initiator = dynamicPayload->dynamicImportInitiator();
+        if (initiator)
+            vm.pushDynamicImportInitiator(initiator);
+#endif
+
         // 6.c. Let evaluatePromise be module.Evaluate().
         JSPromise* evaluatePromise = module->evaluate(globalObject);
+
+#if USE(BUN_JSC_ADDITIONS)
+        if (initiator)
+            vm.popDynamicImportInitiator(initiator);
+#endif
+
         if (scope.exception()) [[unlikely]] {
             capabilityPromise->rejectWithCaughtException(globalObject, scope);
             return;

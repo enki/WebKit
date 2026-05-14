@@ -55,6 +55,7 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
 #include <wtf/BumpPointerAllocator.h>
 #include <wtf/CheckedArithmetic.h>
 #include <wtf/Compiler.h>
+#include <wtf/HashCountedSet.h>
 #include <wtf/LazyRef.h>
 #include <wtf/LazyUniqueRef.h>
 #include <wtf/Lock.h>
@@ -115,6 +116,7 @@ class CompactTDZEnvironmentMap;
 class ConservativeRoots;
 class ControlFlowProfiler;
 class CrossTaskToken;
+class CyclicModuleRecord;
 class Exception;
 class ExceptionScope;
 class FuzzerAgent;
@@ -1228,6 +1230,19 @@ public:
     int64_t incrementModuleAsyncEvaluationCount() { return m_moduleAsyncEvaluationCount++; }
 #if USE(BUN_JSC_ADDITIONS)
     int64_t moduleAsyncEvaluationCount() const { return m_moduleAsyncEvaluationCount; }
+
+    // Track initiator modules of dynamic imports whose target Evaluate()
+    // is currently in progress. The AbstractModuleRecord re-entrancy skip
+    // at innerModuleEvaluation 11.c.v uses this to tell apart the Nitro
+    // self-deadlock (target of `await import()` is currently evaluating,
+    // and the DFS encounters the initiator as a still-EvaluatingAsync TLA
+    // dep — skipping is required, otherwise spec-mandated wait deadlocks)
+    // from an unrelated parallel dynamic import that happens to walk into
+    // a TLA dep left suspended by an earlier Evaluate() (no deadlock risk;
+    // the spec wait is correct — see #30651).
+    void pushDynamicImportInitiator(CyclicModuleRecord* module);
+    void popDynamicImportInitiator(CyclicModuleRecord* module);
+    bool isModuleAwaitingDynamicImport(CyclicModuleRecord* module) const;
 #endif
 
 #if ENABLE(WEBASSEMBLY_DEBUGGER)
@@ -1393,6 +1408,12 @@ public:
         SynchronousModuleQueue* prev { nullptr };
     };
     SynchronousModuleQueue* m_synchronousModuleQueue { nullptr };
+
+    // Raw pointers are safe because every inserter pops before the module
+    // record becomes unreachable (the set entry is tied to an in-flight
+    // `await import()` whose C++-side owner keeps the module alive). Small
+    // expected size (1-2 entries) keeps contains() O(1) in practice.
+    HashCountedSet<CyclicModuleRecord*> m_modulesAwaitingDynamicImport;
 private:
 #endif
 

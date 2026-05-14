@@ -35,11 +35,13 @@
 
 namespace JSC {
 
+class CyclicModuleRecord;
 class ErrorInstance;
 class JSPromise;
 class JSModuleNamespaceObject;
 class JSModuleRecord;
 class JSSourceCode;
+class ModuleLoaderPayload;
 class ModuleRegistryEntry;
 class SourceOrigin;
 
@@ -84,7 +86,11 @@ public:
     // APIs to control the module loader.
     void provideFetch(JSGlobalObject*, const Identifier& key, ScriptFetchParameters::Type, SourceCode&&);
     void provideFetch(JSGlobalObject*, const Identifier& key, ScriptFetchParameters::Type, JSSourceCode*);
+#if USE(BUN_JSC_ADDITIONS)
+    JSPromise* loadModule(JSGlobalObject*, const Identifier& moduleName, RefPtr<ScriptFetchParameters>, RefPtr<ScriptFetcher>, bool evaluate, bool dynamic, bool useImportMap, CyclicModuleRecord* dynamicImportInitiator = nullptr);
+#else
     JSPromise* loadModule(JSGlobalObject*, const Identifier& moduleName, RefPtr<ScriptFetchParameters>, RefPtr<ScriptFetcher>, bool evaluate, bool dynamic, bool useImportMap);
+#endif
     JSPromise* linkAndEvaluateModule(JSGlobalObject*, const Identifier& moduleKey, RefPtr<ScriptFetchParameters>, RefPtr<ScriptFetcher>);
     JSPromise* requestImportModule(JSGlobalObject*, const Identifier& moduleName, const Identifier& referrer, RefPtr<ScriptFetchParameters>, RefPtr<ScriptFetcher>);
 
@@ -151,7 +157,11 @@ public:
     JSPromise* hostLoadImportedModule(JSGlobalObject*, const ModuleReferrer&, const ModuleRequest&, JSCell* payload, RefPtr<ScriptFetcher>, bool useImportMap);
     JSPromise* loadModule(JSGlobalObject*, const ModuleReferrer&, const ModuleRequest&, JSCell* payload, RefPtr<ScriptFetcher>, bool evaluate, bool useImportMap);
     void continueModuleLoading(JSGlobalObject*, ModuleGraphLoadingState*, ModuleCompletion result);
+#if USE(BUN_JSC_ADDITIONS)
+    void continueDynamicImport(JSGlobalObject*, ModuleLoaderPayload*, ModuleCompletion, RefPtr<ScriptFetcher>);
+#else
     void continueDynamicImport(JSGlobalObject*, JSPromise*, ModuleCompletion, RefPtr<ScriptFetcher>);
+#endif
     JSPromise* loadRequestedModules(JSGlobalObject*, AbstractModuleRecord*, RefPtr<ScriptFetcher>);
 
     static JSPromise* makeModule(JSGlobalObject*, const Identifier& moduleKey, JSSourceCode*);

@@ -1346,9 +1346,26 @@ unsigned AbstractModuleRecord::innerModuleEvaluation(JSGlobalObject* globalObjec
                 // sibling whose post-await bindings are still TDZ (#30259) —
                 // and its body has already been entered
                 // (pendingAsyncDependencies == 0).
+                //
+                // The watermark alone is insufficient for the cross-Evaluate()
+                // dynamic-import case (#30651): two independent dynamic
+                // imports of the same TLA dep get fresh watermarks each, so
+                // the second one sees `order < watermark` and skips even
+                // though no deadlock is possible. Narrow further with the
+                // VM-level "currently suspended at `await import(...)`" set:
+                // the Nitro self-deadlock the skip was written for happens
+                // only when the dep is *paused at a dynamic import* that is
+                // evaluating us. For any other kind of await (setTimeout,
+                // fetch, another promise), the dep will resume on its own
+                // and the spec wait is what we want.
+                bool depIsAwaitingDynamicImport = false;
+                if (depWasAlreadyEvaluatingAsync && cyclic->asyncEvaluationOrder().order() < asyncOrderWatermark) {
+                    depIsAwaitingDynamicImport = vm.isModuleAwaitingDynamicImport(cyclic);
+                }
                 if (!depWasAlreadyEvaluatingAsync
                     || cyclic->asyncEvaluationOrder().order() >= asyncOrderWatermark
-                    || cyclic->pendingAsyncDependencies().value_or(1)) {
+                    || cyclic->pendingAsyncDependencies().value_or(1)
+                    || !depIsAwaitingDynamicImport) {
 #endif
                 // 12.b.v.1. Set module.[[PendingAsyncDependencies]] to module.[[PendingAsyncDependencies]] + 1.
                 module->setPendingAsyncDependencies(module->pendingAsyncDependencies().value() + 1);

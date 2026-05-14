@@ -2093,4 +2093,23 @@ Wasm::DebugState* VM::debugState()
 }
 #endif
 
+#if USE(BUN_JSC_ADDITIONS)
+void VM::pushDynamicImportInitiator(CyclicModuleRecord* module)
+{
+    if (module)
+        m_modulesAwaitingDynamicImport.add(module);
+}
+
+void VM::popDynamicImportInitiator(CyclicModuleRecord* module)
+{
+    if (module)
+        m_modulesAwaitingDynamicImport.remove(module);
+}
+
+bool VM::isModuleAwaitingDynamicImport(CyclicModuleRecord* module) const
+{
+    return module && m_modulesAwaitingDynamicImport.contains(module);
+}
+#endif
+
 } // namespace JSC

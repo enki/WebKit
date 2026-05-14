@@ -53,6 +53,9 @@ void ModuleLoaderPayload::visitChildrenImpl(JSCell* cell, Visitor& visitor)
     Base::visitChildren(thisObject, visitor);
     visitor.append(thisObject->m_promise);
     visitor.append(thisObject->m_fulfillment);
+#if USE(BUN_JSC_ADDITIONS)
+    visitor.append(thisObject->m_dynamicImportInitiator);
+#endif
 }
 
 DEFINE_VISIT_CHILDREN(ModuleLoaderPayload);
@@ -63,5 +66,17 @@ ModuleLoaderPayload* ModuleLoaderPayload::create(VM& vm, JSPromise* promise)
     instance->finishCreation(vm);
     return instance;
 }
+
+#if USE(BUN_JSC_ADDITIONS)
+CyclicModuleRecord* ModuleLoaderPayload::dynamicImportInitiator() const
+{
+    return m_dynamicImportInitiator.get();
+}
+
+void ModuleLoaderPayload::setDynamicImportInitiator(VM& vm, CyclicModuleRecord* module)
+{
+    m_dynamicImportInitiator.set(vm, this, module);
+}
+#endif
 
 } // namespace JSC
