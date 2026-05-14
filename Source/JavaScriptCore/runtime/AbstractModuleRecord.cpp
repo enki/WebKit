@@ -1351,21 +1351,26 @@ unsigned AbstractModuleRecord::innerModuleEvaluation(JSGlobalObject* globalObjec
                 // dynamic-import case (#30651): two independent dynamic
                 // imports of the same TLA dep get fresh watermarks each, so
                 // the second one sees `order < watermark` and skips even
-                // though no deadlock is possible. Narrow further with the
-                // VM-level "currently suspended at `await import(...)`" set:
-                // the Nitro self-deadlock the skip was written for happens
-                // only when the dep is *paused at a dynamic import* that is
-                // evaluating us. For any other kind of await (setTimeout,
-                // fetch, another promise), the dep will resume on its own
-                // and the spec wait is what we want.
-                bool depIsAwaitingDynamicImport = false;
-                if (depWasAlreadyEvaluatingAsync && cyclic->asyncEvaluationOrder().order() < asyncOrderWatermark) {
-                    depIsAwaitingDynamicImport = vm.isModuleAwaitingDynamicImport(cyclic);
-                }
+                // though no deadlock is possible. Narrow further when the
+                // embedder is feeding us dynamic-import referrers (the VM
+                // set is non-empty): the Nitro self-deadlock the skip was
+                // written for only happens when the dep is the initiator
+                // of *this* Evaluate(), i.e. the module whose body is
+                // paused at `await import()`. For any other kind of
+                // await (setTimeout, fetch, another promise) or an
+                // unrelated parallel dynamic import, the dep will resume
+                // on its own and the spec wait is what we want.
+                //
+                // Gate the fourth condition on `hasPendingDynamicImport()`
+                // so embedders that don't yet plumb the referrer through
+                // fall back to the looser pre-#30651 behaviour — otherwise
+                // the spec wait would deadlock the Nitro-style tests.
+                bool discriminateByInitiator = vm.hasPendingDynamicImport();
+                bool depIsAwaitingDynamicImport = discriminateByInitiator && vm.isModuleAwaitingDynamicImport(cyclic);
                 if (!depWasAlreadyEvaluatingAsync
                     || cyclic->asyncEvaluationOrder().order() >= asyncOrderWatermark
                     || cyclic->pendingAsyncDependencies().value_or(1)
-                    || !depIsAwaitingDynamicImport) {
+                    || (discriminateByInitiator && !depIsAwaitingDynamicImport)) {
 #endif
                 // 12.b.v.1. Set module.[[PendingAsyncDependencies]] to module.[[PendingAsyncDependencies]] + 1.
                 module->setPendingAsyncDependencies(module->pendingAsyncDependencies().value() + 1);

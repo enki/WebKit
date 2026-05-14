@@ -1240,9 +1240,16 @@ public:
     // from an unrelated parallel dynamic import that happens to walk into
     // a TLA dep left suspended by an earlier Evaluate() (no deadlock risk;
     // the spec wait is correct — see #30651).
+    //
+    // hasPendingDynamicImport() gates whether the new initiator-based
+    // discriminator fires at all: embedders that don't plumb the referrer
+    // through to requestImportModule leave the set empty, and should keep
+    // the pre-#30651 behaviour (deadlock avoidance without the fourth
+    // narrowing condition).
     void pushDynamicImportInitiator(CyclicModuleRecord* module);
     void popDynamicImportInitiator(CyclicModuleRecord* module);
     bool isModuleAwaitingDynamicImport(CyclicModuleRecord* module) const;
+    bool hasPendingDynamicImport() const { return !m_modulesAwaitingDynamicImport.isEmpty(); }
 #endif
 
 #if ENABLE(WEBASSEMBLY_DEBUGGER)
