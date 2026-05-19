@@ -8,6 +8,15 @@ on:
         required: true
         default: "libbun-pic-5488984d"
         type: string
+      target:
+        description: "Target to build"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - amd64
+          - arm64
 
 permissions:
   contents: read
@@ -15,6 +24,7 @@ permissions:
 jobs:
   linux-pic:
     name: Linux PIC (${{ matrix.label }})
+    if: ${{ inputs.target == 'all' || inputs.target == matrix.target }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 360
     strategy:
@@ -22,12 +32,21 @@ jobs:
       matrix:
         include:
           - label: bun-webkit-linux-amd64-pic-debug
+            target: amd64
             os: ubuntu-24.04
             package_json_arch: x64
             cmake_build_type: Debug
             release_flags: "-O3 -DNDEBUG=1"
             lto_flag: ""
             march_flag: "-march=haswell"
+          - label: bun-webkit-linux-arm64-pic-debug
+            target: arm64
+            os: ubuntu-24.04-arm
+            package_json_arch: arm64
+            cmake_build_type: Debug
+            release_flags: "-O3 -DNDEBUG=1"
+            lto_flag: ""
+            march_flag: "-march=armv8-a+crc -mtune=ampere1"
     steps:
       - uses: actions/checkout@v4
         with:
