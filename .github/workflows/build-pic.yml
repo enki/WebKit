@@ -24,7 +24,6 @@ permissions:
 jobs:
   linux-pic:
     name: Linux PIC (${{ matrix.label }})
-    if: ${{ inputs.target == 'all' || inputs.target == matrix.target }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 360
     strategy:
