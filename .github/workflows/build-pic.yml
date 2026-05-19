@@ -1,0 +1,92 @@
+name: Build WebKit PIC
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_ref:
+        description: "Git ref to build"
+        required: true
+        default: "libbun-pic-5488984d"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  linux-pic:
+    name: Linux PIC (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: bun-webkit-linux-amd64-pic-debug
+            os: ubuntu-24.04
+            package_json_arch: x64
+            cmake_build_type: Debug
+            release_flags: "-O3 -DNDEBUG=1"
+            lto_flag: ""
+            march_flag: "-march=haswell"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.build_ref }}
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !LayoutTests/
+            !JSTests/
+
+      - uses: docker/setup-buildx-action@v3
+        with:
+          install: true
+
+      - name: Build PIC WebKit
+        env:
+          RELEASE_FLAGS: ${{ matrix.release_flags }}
+          MARCH_FLAG: ${{ matrix.march_flag }}
+          WEBKIT_RELEASE_TYPE: ${{ matrix.cmake_build_type }}
+          LTO_FLAG: ${{ matrix.lto_flag }}
+          temp: ${{ runner.temp }}
+        run: |
+          rm -rf "${{ runner.temp }}/bun-webkit" "${{ runner.temp }}/bun-webkit.tar.gz"
+          CPU=native cpu=native bash release.sh
+          cd "${{ runner.temp }}"
+          echo "#define BUN_WEBKIT_VERSION \"${{ inputs.build_ref }}\"" >> bun-webkit/include/cmakeconfig.h
+          echo '{ "name": "${{ matrix.label }}", "version": "0.0.1-${{ inputs.build_ref }}", "os": ["linux"], "cpu": ["${{ matrix.package_json_arch }}"], "repository": "https://github.com/${{ github.repository }}" }' > bun-webkit/package.json
+          rm -rf bun-webkit/lib/*.so bun-webkit/lib/*.so.*
+
+      - name: Verify PIC relocation shape
+        run: |
+          tmpdir="$(mktemp -d)"
+          findings="$tmpdir/findings.txt"
+          : > "$findings"
+          while IFS= read -r -d '' archive; do
+            members="$tmpdir/members"
+            mkdir -p "$members"
+            while IFS= read -r member; do
+              object="$members/${member//\//_}"
+              if ar p "$archive" "$member" > "$object" 2>/dev/null && readelf -h "$object" >/dev/null 2>&1; then
+                readelf -rW "$object" 2>/dev/null |
+                  awk -v label="$archive($member)" '/R_X86_64_TPOFF32|R_X86_64_TPOFF64|R_AARCH64_TLSLE_/ { print label ": " $0 }' >> "$findings"
+              fi
+            done < <(ar t "$archive")
+            rm -rf "$members"
+          done < <(find "${{ runner.temp }}/bun-webkit/lib" -name '*.a' -print0)
+          if [[ -s "$findings" ]]; then
+            echo "shared-object-hostile Linux TLS relocations found:" >&2
+            sed 's/^/  /' "$findings" >&2
+            exit 1
+          fi
+          echo "PIC WebKit archives have no known shared-object-hostile TLS relocations"
+
+      - name: Package artifact
+        run: |
+          cd "${{ runner.temp }}"
+          tar -czf bun-webkit.tar.gz bun-webkit
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.label }}
+          path: ${{ runner.temp }}/bun-webkit.tar.gz
