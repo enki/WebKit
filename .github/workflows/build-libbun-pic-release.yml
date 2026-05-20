@@ -68,22 +68,18 @@ jobs:
 
           cd "${{ runner.temp }}"
           echo "#define BUN_WEBKIT_VERSION \"${{ inputs.build_ref }}\"" >> bun-webkit/include/cmakeconfig.h
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          package = {
-              "name": "${{ matrix.artifact_name }}",
-              "version": "0.0.1-${{ inputs.build_ref }}",
-              "os": ["linux"],
-              "cpu": ["${{ matrix.package_json_arch }}"],
-              "repository": "https://github.com/${{ github.repository }}",
-              "libbunPic": True,
-              "webkitBuildType": "Release",
-              "positionIndependentCode": True,
+          cat > bun-webkit/package.json <<JSON
+          {
+            "cpu": ["${{ matrix.package_json_arch }}"],
+            "libbunPic": true,
+            "name": "${{ matrix.artifact_name }}",
+            "os": ["linux"],
+            "positionIndependentCode": true,
+            "repository": "https://github.com/${{ github.repository }}",
+            "version": "0.0.1-${{ inputs.build_ref }}",
+            "webkitBuildType": "Release"
           }
-          Path("bun-webkit/package.json").write_text(json.dumps(package, indent=2, sort_keys=True) + "\n")
-          PY
+          JSON
           rm -rf bun-webkit/lib/*.so bun-webkit/lib/*.so.*
           tar -czf "${{ matrix.asset_name }}" bun-webkit
 
@@ -115,30 +111,26 @@ jobs:
           (
             cd out
             sha256sum bun-webkit-linux-amd64-pic-release.tar.gz bun-webkit-linux-arm64-pic-release.tar.gz > checksums.txt
-            python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          metadata = {
-              "schema": "libbun.webkit_pic_release_inputs.v1",
-              "repository": "${{ github.repository }}",
-              "releaseTag": "${{ inputs.release_tag }}",
-              "buildRef": "${{ inputs.build_ref }}",
-              "webkitBuildType": "Release",
-              "positionIndependentCode": True,
+            cat > metadata.json <<JSON
+            {
               "assets": [
-                  {
-                      "target": "x86_64-unknown-linux-gnu",
-                      "asset": "bun-webkit-linux-amd64-pic-release.tar.gz",
-                  },
-                  {
-                      "target": "aarch64-unknown-linux-gnu",
-                      "asset": "bun-webkit-linux-arm64-pic-release.tar.gz",
-                  },
+                {
+                  "asset": "bun-webkit-linux-amd64-pic-release.tar.gz",
+                  "target": "x86_64-unknown-linux-gnu"
+                },
+                {
+                  "asset": "bun-webkit-linux-arm64-pic-release.tar.gz",
+                  "target": "aarch64-unknown-linux-gnu"
+                }
               ],
-          }
-          Path("metadata.json").write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
-          PY
+              "buildRef": "${{ inputs.build_ref }}",
+              "positionIndependentCode": true,
+              "releaseTag": "${{ inputs.release_tag }}",
+              "repository": "${{ github.repository }}",
+              "schema": "libbun.webkit_pic_release_inputs.v1",
+              "webkitBuildType": "Release"
+            }
+            JSON
           )
 
       - name: Publish release
