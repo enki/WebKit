@@ -68,18 +68,17 @@ jobs:
 
           cd "${{ runner.temp }}"
           echo "#define BUN_WEBKIT_VERSION \"${{ inputs.build_ref }}\"" >> bun-webkit/include/cmakeconfig.h
-          cat > bun-webkit/package.json <<JSON
-          {
-            "cpu": ["${{ matrix.package_json_arch }}"],
-            "libbunPic": true,
-            "name": "${{ matrix.artifact_name }}",
-            "os": ["linux"],
-            "positionIndependentCode": true,
-            "repository": "https://github.com/${{ github.repository }}",
-            "version": "0.0.1-${{ inputs.build_ref }}",
-            "webkitBuildType": "Release"
-          }
-          JSON
+          printf '%s\n' \
+            '{' \
+            '  "cpu": ["${{ matrix.package_json_arch }}"],' \
+            '  "libbunPic": true,' \
+            '  "name": "${{ matrix.artifact_name }}",' \
+            '  "os": ["linux"],' \
+            '  "positionIndependentCode": true,' \
+            '  "repository": "https://github.com/${{ github.repository }}",' \
+            '  "version": "0.0.1-${{ inputs.build_ref }}",' \
+            '  "webkitBuildType": "Release"' \
+            '}' > bun-webkit/package.json
           rm -rf bun-webkit/lib/*.so bun-webkit/lib/*.so.*
           tar -czf "${{ matrix.asset_name }}" bun-webkit
 
@@ -111,26 +110,25 @@ jobs:
           (
             cd out
             sha256sum bun-webkit-linux-amd64-pic-release.tar.gz bun-webkit-linux-arm64-pic-release.tar.gz > checksums.txt
-            cat > metadata.json <<JSON
-            {
-              "assets": [
-                {
-                  "asset": "bun-webkit-linux-amd64-pic-release.tar.gz",
-                  "target": "x86_64-unknown-linux-gnu"
-                },
-                {
-                  "asset": "bun-webkit-linux-arm64-pic-release.tar.gz",
-                  "target": "aarch64-unknown-linux-gnu"
-                }
-              ],
-              "buildRef": "${{ inputs.build_ref }}",
-              "positionIndependentCode": true,
-              "releaseTag": "${{ inputs.release_tag }}",
-              "repository": "${{ github.repository }}",
-              "schema": "libbun.webkit_pic_release_inputs.v1",
-              "webkitBuildType": "Release"
-            }
-            JSON
+            printf '%s\n' \
+              '{' \
+              '  "assets": [' \
+              '    {' \
+              '      "asset": "bun-webkit-linux-amd64-pic-release.tar.gz",' \
+              '      "target": "x86_64-unknown-linux-gnu"' \
+              '    },' \
+              '    {' \
+              '      "asset": "bun-webkit-linux-arm64-pic-release.tar.gz",' \
+              '      "target": "aarch64-unknown-linux-gnu"' \
+              '    }' \
+              '  ],' \
+              '  "buildRef": "${{ inputs.build_ref }}",' \
+              '  "positionIndependentCode": true,' \
+              '  "releaseTag": "${{ inputs.release_tag }}",' \
+              '  "repository": "${{ github.repository }}",' \
+              '  "schema": "libbun.webkit_pic_release_inputs.v1",' \
+              '  "webkitBuildType": "Release"' \
+              '}' > metadata.json
           )
 
       - name: Publish release
