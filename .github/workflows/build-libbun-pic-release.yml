@@ -26,13 +26,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: linux-x64-gh
+          - os: ubuntu-24.04
             artifact_name: bun-webkit-linux-amd64-pic-release
             asset_name: bun-webkit-linux-amd64-pic-release.tar.gz
             package_json_arch: x64
             asset_arch: amd64
             march_flag: -march=haswell
-          - os: linux-arm64-gh
+          - os: ubuntu-24.04-arm
             artifact_name: bun-webkit-linux-arm64-pic-release
             asset_name: bun-webkit-linux-arm64-pic-release.tar.gz
             package_json_arch: arm64
