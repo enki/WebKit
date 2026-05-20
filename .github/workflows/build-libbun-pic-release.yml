@@ -1,0 +1,153 @@
+name: Build libbun PIC WebKit release inputs
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: WebKit release tag for libbun PIC inputs
+        required: true
+        default: libbun-webkit-pic-release-5488984d-20260520
+        type: string
+      build_ref:
+        description: WebKit commit or ref to build
+        required: true
+        default: 9e388ee3f37929dcbbc3ae5323dc5f7418a1a86a
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  linux-pic-release:
+    name: Linux PIC WebKit (${{ matrix.asset_arch }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux-x64-gh
+            artifact_name: bun-webkit-linux-amd64-pic-release
+            asset_name: bun-webkit-linux-amd64-pic-release.tar.gz
+            package_json_arch: x64
+            asset_arch: amd64
+            march_flag: -march=haswell
+          - os: linux-arm64-gh
+            artifact_name: bun-webkit-linux-arm64-pic-release
+            asset_name: bun-webkit-linux-arm64-pic-release.tar.gz
+            package_json_arch: arm64
+            asset_arch: arm64
+            march_flag: -march=armv8-a+crc -mtune=ampere1
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.build_ref }}
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !LayoutTests/
+            !JSTests/
+
+      - uses: docker/setup-buildx-action@v2
+        with:
+          install: true
+
+      - name: Build PIC release WebKit
+        run: |
+          set -euo pipefail
+          rm -rf "${{ runner.temp }}/bun-webkit" "${{ runner.temp }}/bun-webkit.tar.gz"
+          WEBKIT_RELEASE_TYPE=Release \
+          CPU=native \
+          cpu=native \
+          LTO_FLAG="" \
+          MARCH_FLAG="${{ matrix.march_flag }}" \
+          RELEASE_FLAGS="-O3 -DNDEBUG=1" \
+          temp="${{ runner.temp }}" \
+            bash release.sh
+
+          cd "${{ runner.temp }}"
+          echo "#define BUN_WEBKIT_VERSION \"${{ inputs.build_ref }}\"" >> bun-webkit/include/cmakeconfig.h
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          package = {
+              "name": "${{ matrix.artifact_name }}",
+              "version": "0.0.1-${{ inputs.build_ref }}",
+              "os": ["linux"],
+              "cpu": ["${{ matrix.package_json_arch }}"],
+              "repository": "https://github.com/${{ github.repository }}",
+              "libbunPic": True,
+              "webkitBuildType": "Release",
+              "positionIndependentCode": True,
+          }
+          Path("bun-webkit/package.json").write_text(json.dumps(package, indent=2, sort_keys=True) + "\n")
+          PY
+          rm -rf bun-webkit/lib/*.so bun-webkit/lib/*.so.*
+          tar -czf "${{ matrix.asset_name }}" bun-webkit
+
+      - name: Upload PIC release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ runner.temp }}/${{ matrix.asset_name }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish libbun PIC WebKit release inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: linux-pic-release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bun-webkit-linux-*-pic-release
+          path: artifacts
+          merge-multiple: true
+
+      - name: Prepare release assets
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp artifacts/bun-webkit-linux-amd64-pic-release.tar.gz out/
+          cp artifacts/bun-webkit-linux-arm64-pic-release.tar.gz out/
+          (
+            cd out
+            sha256sum bun-webkit-linux-amd64-pic-release.tar.gz bun-webkit-linux-arm64-pic-release.tar.gz > checksums.txt
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          metadata = {
+              "schema": "libbun.webkit_pic_release_inputs.v1",
+              "repository": "${{ github.repository }}",
+              "releaseTag": "${{ inputs.release_tag }}",
+              "buildRef": "${{ inputs.build_ref }}",
+              "webkitBuildType": "Release",
+              "positionIndependentCode": True,
+              "assets": [
+                  {
+                      "target": "x86_64-unknown-linux-gnu",
+                      "asset": "bun-webkit-linux-amd64-pic-release.tar.gz",
+                  },
+                  {
+                      "target": "aarch64-unknown-linux-gnu",
+                      "asset": "bun-webkit-linux-arm64-pic-release.tar.gz",
+                  },
+              ],
+          }
+          Path("metadata.json").write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+          PY
+          )
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          generate_release_notes: true
+          files: |
+            out/bun-webkit-linux-amd64-pic-release.tar.gz
+            out/bun-webkit-linux-arm64-pic-release.tar.gz
+            out/checksums.txt
+            out/metadata.json
